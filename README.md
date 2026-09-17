@@ -108,69 +108,50 @@ API8 findings come from the separate response-configuration checks.
 
 ## Independent validation against OWASP crAPI
 
-The bundled mock API is useful for a fast, repeatable integration test, but
-it is not independent evidence: this project controls both the scanner and
-the mock vulnerabilities. A separate validation against
-[OWASP crAPI](https://github.com/OWASP/crAPI) is planned and has **not yet
-been run**. crAPI is an independently maintained, intentionally vulnerable
-API learning project; its documented challenges provide a reference for
-checking scanner results. Do not present the mock-server results as proof
-that the scanner detects vulnerabilities in an independent target.
+The scanner was run against a local OWASP crAPI deployment, independent of
+this project's mock API. The upstream checkout was pinned to
+`b5fc307f3e5f875809b095b771108ef342a33724` (branch `main`), and its official
+OpenAPI document was used. Two throwaway accounts used reserved `example.com`
+addresses; credentials and bearer tokens are not stored in this repository.
 
-Budget a focused evening for this validation. Keep the target local, use
-throwaway accounts and data, and record the crAPI release or Git commit used.
-The upstream deployment instructions and OpenAPI document can change, so
-follow the current [crAPI Docker setup](https://github.com/OWASP/crAPI) and
-use the [OpenAPI spec published by crAPI](https://github.com/OWASP/crAPI/blob/develop/openapi-spec/crapi-openapi-spec.json)
-rather than assuming the mock spec or endpoint IDs will transfer directly.
+The run used safe read-only mode against 16 GET operations. It did not enable
+the local-only LLM demos, request-body mutation, or rate-limit sampling. The
+scanner produced **3 findings**: 1 critical `BROKEN_AUTH` and 2 medium
+`SECURITY_MISCONFIGURATION` signals.
 
-On Windows, the upstream repository currently documents this Docker Compose
-flow (check the linked instructions for any updates before running it):
+| Scanner result | crAPI reference review | Outcome |
+| --- | --- | --- |
+| `GET /workshop/api/shop/orders/{order_id}` returned HTTP 200 without an Authorization header and exposed an order response | crAPI documents Challenge 14, “Unauthenticated Access” | Direct match to the documented issue class; endpoint behavior was observed in this run |
+| Missing `X-Content-Type-Options` and wildcard CORS on two community GET responses | No one-to-one documented challenge was identified; these are scanner configuration heuristics | Signals reported, not counted as confirmed challenge matches |
+| BOLA module: 0 findings | crAPI documents vehicle and mechanic-report BOLA challenges | Not validated: the scanner needs real foreign vehicle/report IDs (GUIDs or report IDs), but this run supplied account subjects, not owned resource IDs. A zero result is not evidence those challenges are absent. |
 
-```powershell
-curl.exe -L -o crapi.zip https://github.com/OWASP/crAPI/archive/refs/heads/main.zip
-tar -xf .\crapi.zip
-Set-Location .\crAPI-main\deploy\docker
-docker compose pull
-docker compose -f docker-compose.yml --compatibility up -d
-```
+This is a bounded validation, not a claim that the scanner detects all crAPI
+vulnerabilities. The challenge guide also covers state-changing workflows,
+rate limiting, injection, JWT attacks, and LLM behavior, which this
+read-only run did not exercise. Local reports are
+`reports/crapi-validation.json` and `reports/crapi-validation.html`; reports
+are git-ignored and may contain target response evidence.
 
-Before scanning, confirm the containers are healthy, inspect the OpenAPI
-spec, and create two separate low-privilege test accounts using crAPI's
-normal signup/login flow. Adapt the scanner inputs to the actual crAPI
-authentication and resource-ID model; the current BOLA module assumes the
-provided account user ID is also a valid resource ID, which may not hold.
-Only run checks against this local instance and avoid destructive requests
-or real personal data.
+### Reproducing the validation
 
-This repository includes a conservative Windows runner. It downloads
-crAPI's published spec for the selected ref and only probes read-only
-operations; request-body mutation and the mock-only prompt-injection
-simulation are disabled. Supply short-lived tokens and resource IDs for
-two throwaway accounts (the IDs must correspond to resources that each
-account can legitimately read):
+Keep crAPI local, use throwaway accounts and data, and record the exact
+upstream commit. Consult the current [crAPI Docker setup](https://github.com/OWASP/crAPI)
+and [challenge guide](https://github.com/OWASP/crAPI/blob/main/docs/challenges.md).
+This repository includes a conservative Windows runner that uses read-only
+operations; supply short-lived tokens and actual resource IDs for two test
+accounts:
 
 ```powershell
 .\scripts\run_crapi_validation.ps1 `
   -TokenA $env:CRAPI_TOKEN_A -ResourceIdA "<account-a-resource-id>" `
   -TokenB $env:CRAPI_TOKEN_B -ResourceIdB "<account-b-resource-id>" `
-  -CrApiRef "<reviewed-crAPI-commit-or-branch>"
+  -CrApiRef "<reviewed-crAPI-commit>"
 ```
 
-The default ref is `develop`; for repeatability, use a reviewed commit SHA
-and record it. The runner does not create accounts or infer resource IDs:
-complete those steps manually using crAPI's normal workflow first. It
-produces scanner reports, not an automatic proof of detection. Review each
-result against crAPI's published challenge documentation and record
-confirmed matches, false positives, misses, and unsupported cases.
-
-For a credible evaluation, save the exact scanner command, crAPI version or
-commit, sanitized JSON/HTML reports, and a results table that maps each
-finding to an independently documented crAPI challenge. Manually verify
-each match, and record false positives, documented vulnerabilities missed,
-and checks that could not be exercised. A finding is not confirmed merely
-because its category exists in crAPI. Until this run is completed, describe
-crAPI validation as **planned**, not as a completed result.
+The runner does not create accounts or infer resource IDs. Manually review
+findings against crAPI's challenge guide and record confirmed matches, false
+positives, misses, and unsupported cases. A finding is not confirmed merely
+because its category exists in crAPI.
 
 ## CI/CD integration
 
