@@ -70,25 +70,50 @@ prompt-injection cases. The injection probe reports no finding on this mock
 API. Run `python -m pytest -q` for the automated unit and end-to-end checks.
 Reports escape untrusted finding content before rendering it as HTML.
 
-## Validating against a real vulnerable API (recommended for your writeup)
+## Independent validation against OWASP crAPI
 
-The mock server above is a fast offline sanity check. For your actual
-capstone validation and evidence, run this against **OWASP crAPI**
-(a full intentionally-vulnerable API built specifically to teach these
-exact vulnerability classes):
+The bundled mock API is useful for a fast, repeatable integration test, but
+it is not independent evidence: this project controls both the scanner and
+the mock vulnerabilities. A separate validation against
+[OWASP crAPI](https://github.com/OWASP/crAPI) is planned and has **not yet
+been run**. crAPI is an independently maintained, intentionally vulnerable
+API learning project; its documented challenges provide a reference for
+checking scanner results. Do not present the mock-server results as proof
+that the scanner detects vulnerabilities in an independent target.
 
-```bash
-git clone https://github.com/OWASP/crAPI.git
-cd crAPI
-docker-compose up -d
+Budget a focused evening for this validation. Keep the target local, use
+throwaway accounts and data, and record the crAPI release or Git commit used.
+The upstream deployment instructions and OpenAPI document can change, so
+follow the current [crAPI Docker setup](https://github.com/OWASP/crAPI) and
+use the [OpenAPI spec published by crAPI](https://github.com/OWASP/crAPI/blob/develop/openapi-spec/crapi-openapi-spec.json)
+rather than assuming the mock spec or endpoint IDs will transfer directly.
+
+On Windows, the upstream repository currently documents this Docker Compose
+flow (check the linked instructions for any updates before running it):
+
+```powershell
+curl.exe -L -o crapi.zip https://github.com/OWASP/crAPI/archive/refs/heads/main.zip
+tar -xf .\crapi.zip
+Set-Location .\crAPI-main\deploy\docker
+docker compose pull
+docker compose -f docker-compose.yml --compatibility up -d
 ```
 
-crAPI exposes its own OpenAPI spec and has documented, known BOLA and mass
-assignment issues — running the scanner against it and cross-checking your
-findings against crAPI's own vulnerability documentation is exactly the
-kind of "does automated detection match known-ground-truth" evaluation a
-capstone panel wants to see, and is much stronger evidence than the mock
-server alone.
+Before scanning, confirm the containers are healthy, inspect the OpenAPI
+spec, and create two separate low-privilege test accounts using crAPI's
+normal signup/login flow. Adapt the scanner inputs to the actual crAPI
+authentication and resource-ID model; the current BOLA module assumes the
+provided account user ID is also a valid resource ID, which may not hold.
+Only run checks against this local instance and avoid destructive requests
+or real personal data.
+
+For a credible evaluation, save the exact scanner command, crAPI version or
+commit, sanitized JSON/HTML reports, and a results table that maps each
+finding to an independently documented crAPI challenge. Manually verify
+each match, and record false positives, documented vulnerabilities missed,
+and checks that could not be exercised. A finding is not confirmed merely
+because its category exists in crAPI. Until this run is completed, describe
+crAPI validation as **planned**, not as a completed result.
 
 ## CI/CD integration
 
