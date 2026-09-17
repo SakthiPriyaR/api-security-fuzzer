@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$ResourceIdA,
     [Parameter(Mandatory = $true)][string]$TokenB,
     [Parameter(Mandatory = $true)][string]$ResourceIdB,
+    [string]$ResourceIdsB = "{}",
     [string]$BaseUrl = "http://localhost:8888",
     [string]$CrApiRef = "develop"
 )
@@ -24,6 +25,7 @@ python -m fuzzer.cli `
     --base-url $BaseUrl `
     --token-a $TokenA --user-id-a $ResourceIdA `
     --token-b $TokenB --user-id-b $ResourceIdB `
+    --resource-ids-b $ResourceIdsB `
     --safe-read-only `
     --skip mass_assignment `
     --out $reportPrefix `

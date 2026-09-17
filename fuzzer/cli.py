@@ -18,6 +18,7 @@ fail a build).
 """
 
 import argparse
+import json
 import sys
 
 from fuzzer.parser import load_spec, parse_endpoints, summarize
@@ -40,6 +41,12 @@ def build_arg_parser():
     p.add_argument("--user-id-a", required=True, help="Resource/user id for account A")
     p.add_argument("--token-b", required=True, help="Bearer token for test account B")
     p.add_argument("--user-id-b", required=True, help="Resource/user id for account B")
+    p.add_argument(
+        "--resource-ids-b",
+        default="{}",
+        help=("Optional JSON object mapping OpenAPI ID parameter names to real "
+              "resource IDs owned by account B, e.g. '{\"vehicleId\":\"GUID\"}'."),
+    )
     p.add_argument("--out", default="reports/scan", help="Output path prefix (no extension)")
     p.add_argument(
         "--safe-read-only",
@@ -75,6 +82,17 @@ SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
 
+    try:
+        resource_ids_b = json.loads(args.resource_ids_b)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"--resource-ids-b must be valid JSON: {exc}")
+    if not isinstance(resource_ids_b, dict) or any(
+        not isinstance(name, str) or not isinstance(value, (str, int, float))
+        for name, value in resource_ids_b.items()
+    ):
+        raise SystemExit("--resource-ids-b must be a JSON object of parameter names to scalar IDs")
+    resource_ids_b = {name: str(value) for name, value in resource_ids_b.items()}
+
     print(f"[*] Loading spec: {args.spec}")
     spec = load_spec(args.spec)
     endpoints = parse_endpoints(spec)
@@ -100,7 +118,10 @@ def main(argv=None):
 
     client = ApiClient(base_url=args.base_url)
     account_a = TestAccount(label="A", token=args.token_a, user_id=args.user_id_a)
-    account_b = TestAccount(label="B", token=args.token_b, user_id=args.user_id_b)
+    account_b = TestAccount(
+        label="B", token=args.token_b, user_id=args.user_id_b,
+        resource_ids=resource_ids_b,
+    )
 
     all_findings = []
 

@@ -13,7 +13,7 @@ unprivileged users. Almost every BOLA-style test is really just:
 
 import re
 import requests
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -23,6 +23,9 @@ class TestAccount:
     token: str            # bearer token for this account
     user_id: str          # this account's own resource/user id
     extra_headers: dict = None
+    # Optional concrete object IDs keyed by OpenAPI parameter name, e.g.
+    # {"vehicleId": "<GUID>", "report_id": "<id>"}.
+    resource_ids: dict = field(default_factory=dict)
 
     def headers(self) -> dict:
         h = {"Authorization": f"Bearer {self.token}"} if self.token else {}

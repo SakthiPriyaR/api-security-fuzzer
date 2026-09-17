@@ -67,6 +67,41 @@ def test_read_only_validation_flag_is_available():
     assert args.local_llm_demos is False
 
 
+def test_bola_uses_supplied_foreign_resource_id():
+    endpoint = Endpoint(
+        path="/vehicles/{vehicleId}", method="get", operation_id="vehicle",
+        parameters=[Parameter("vehicleId", "path", True, "string")],
+        requires_auth=True,
+    )
+
+    class Response:
+        status_code = 200
+        text = '{"vehicle":"visible"}'
+
+        def json(self):
+            return {"vehicle": "visible"}
+
+    class Client:
+        calls = []
+
+        def call(self, method, path, account=None, path_values=None, **kwargs):
+            self.calls.append((account.label, path_values))
+            return Response()
+
+    client = Client()
+    account_a = Account("A", "token-a", "user-a")
+    account_b = Account("B", "token-b", "user-b", resource_ids={"vehicleId": "foreign-guid"})
+
+    findings = bola.run([endpoint], client, account_a, account_b)
+
+    assert len(findings) == 1
+    assert client.calls == [
+        ("B", {"vehicleId": "foreign-guid"}),
+        ("A", {"vehicleId": "foreign-guid"}),
+    ]
+    assert findings[0].evidence["resource_id_source"] == "provided"
+
+
 def test_demo_scan_detects_documented_vulnerabilities():
     spec = load_spec(str(ROOT / "sample_apis" / "demo_openapi.json"))
     endpoints = parse_endpoints(spec)

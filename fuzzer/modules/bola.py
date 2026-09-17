@@ -55,10 +55,12 @@ def run(endpoints, client, account_a, account_b):
     for ep in candidates:
         id_param = ep.id_parameters[0]
 
-        # Step 1: let account_b hit its own resource to establish a
-        # real, valid resource ID we can then try to steal as account_a.
-        # We try account_b's own user_id as a first guess for the ID value.
-        probe_values = {id_param.name: account_b.user_id}
+        # Prefer a caller-supplied ID of a resource known to belong to B.
+        # This supports APIs where object IDs (e.g. crAPI vehicle GUIDs)
+        # are unrelated to the account's user ID. Keep the legacy fallback
+        # for the bundled demo and existing integrations.
+        resource_id = account_b.resource_ids.get(id_param.name, account_b.user_id)
+        probe_values = {id_param.name: resource_id}
         baseline = client.call(ep.method, ep.path, account=account_b,
                                 path_values=probe_values)
 
@@ -80,12 +82,16 @@ def run(endpoints, client, account_a, account_b):
                 endpoint=f"{ep.method.upper()} {ep.path}",
                 description=(
                     f"Account A successfully accessed a resource "
-                    f"(id={account_b.user_id}) belonging to Account B "
+                    f"(id={resource_id}) belonging to Account B "
                     f"using Account A's own auth token. The API is not "
                     f"verifying object ownership."
                 ),
                 evidence={
                     "id_parameter": id_param.name,
+                    "resource_id_source": (
+                        "provided" if id_param.name in account_b.resource_ids
+                        else "account_user_id_fallback"
+                    ),
                     "resource_owner": "account_b",
                     "requesting_account": "account_a",
                     "response_status": attack_resp.status_code,
