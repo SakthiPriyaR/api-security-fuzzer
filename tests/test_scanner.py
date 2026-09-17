@@ -4,6 +4,7 @@ from http.server import HTTPServer
 from pathlib import Path
 
 from fuzzer.http_client import ApiClient, TestAccount as Account, fill_path
+from fuzzer.cli import build_arg_parser
 from fuzzer.modules import bola, broken_auth, mass_assignment, prompt_injection, injection
 from fuzzer.parser import load_spec, parse_endpoints
 from fuzzer.report import generate_html_report, generate_json_report
@@ -42,6 +43,17 @@ def test_path_substitution_and_openapi_security_override():
     endpoints = {endpoint.path: endpoint for endpoint in parse_endpoints(spec)}
     assert endpoints["/public"].requires_auth is False
     assert endpoints["/private"].requires_auth is True
+
+
+def test_read_only_validation_flag_is_available():
+    args = build_arg_parser().parse_args([
+        "--spec", "spec.json",
+        "--base-url", "http://127.0.0.1:8888",
+        "--token-a", "a", "--user-id-a", "1",
+        "--token-b", "b", "--user-id-b", "2",
+        "--safe-read-only",
+    ])
+    assert args.safe_read_only is True
 
 
 def test_demo_scan_detects_documented_vulnerabilities():

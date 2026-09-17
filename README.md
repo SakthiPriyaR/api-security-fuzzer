@@ -107,6 +107,27 @@ provided account user ID is also a valid resource ID, which may not hold.
 Only run checks against this local instance and avoid destructive requests
 or real personal data.
 
+This repository includes a conservative Windows runner. It downloads
+crAPI's published spec for the selected ref and only probes read-only
+operations; request-body mutation and the mock-only prompt-injection
+simulation are disabled. Supply short-lived tokens and resource IDs for
+two throwaway accounts (the IDs must correspond to resources that each
+account can legitimately read):
+
+```powershell
+.\scripts\run_crapi_validation.ps1 `
+  -TokenA $env:CRAPI_TOKEN_A -ResourceIdA "<account-a-resource-id>" `
+  -TokenB $env:CRAPI_TOKEN_B -ResourceIdB "<account-b-resource-id>" `
+  -CrApiRef "<reviewed-crAPI-commit-or-branch>"
+```
+
+The default ref is `develop`; for repeatability, use a reviewed commit SHA
+and record it. The runner does not create accounts or infer resource IDs:
+complete those steps manually using crAPI's normal workflow first. It
+produces scanner reports, not an automatic proof of detection. Review each
+result against crAPI's published challenge documentation and record
+confirmed matches, false positives, misses, and unsupported cases.
+
 For a credible evaluation, save the exact scanner command, crAPI version or
 commit, sanitized JSON/HTML reports, and a results table that maps each
 finding to an independently documented crAPI challenge. Manually verify

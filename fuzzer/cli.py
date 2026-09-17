@@ -39,6 +39,12 @@ def build_arg_parser():
     p.add_argument("--token-b", required=True, help="Bearer token for test account B")
     p.add_argument("--user-id-b", required=True, help="Resource/user id for account B")
     p.add_argument("--out", default="reports/scan", help="Output path prefix (no extension)")
+    p.add_argument(
+        "--safe-read-only",
+        action="store_true",
+        help=("Only probe GET/HEAD/OPTIONS endpoints and disable the local-only "
+              "prompt-injection simulation; use for an isolated validation target."),
+    )
     p.add_argument("--skip", nargs="*", default=[],
                     choices=["bola", "mass_assignment", "broken_auth", "prompt_injection", "injection"],
                     help="Skip one or more modules")
@@ -58,6 +64,14 @@ def main(argv=None):
     print(f"[*] Loading spec: {args.spec}")
     spec = load_spec(args.spec)
     endpoints = parse_endpoints(spec)
+    if args.safe_read_only:
+        endpoints = [ep for ep in endpoints if ep.method in ("get", "head", "options")]
+        if "prompt_injection" not in args.skip:
+            print("[*] Safe read-only mode: disabling local prompt-injection simulation")
+            args.skip.append("prompt_injection")
+        if "mass_assignment" not in args.skip:
+            print("[*] Safe read-only mode: disabling request-body mutation probes")
+            args.skip.append("mass_assignment")
     print(summarize(endpoints))
 
     client = ApiClient(base_url=args.base_url)
