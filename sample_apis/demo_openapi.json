@@ -1,0 +1,44 @@
+{
+  "openapi": "3.0.0",
+  "info": {"title": "Demo Vulnerable API", "version": "1.0.0"},
+  "security": [{"bearerAuth": []}],
+  "paths": {
+    "/orders/{order_id}": {
+      "get": {
+        "operationId": "getOrder",
+        "parameters": [
+          {"name": "order_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    },
+    "/profile": {
+      "get": {
+        "operationId": "getProfile",
+        "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    },
+    "/users/{user_id}/update": {
+      "put": {
+        "operationId": "updateUser",
+        "parameters": [
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {"type": "string"},
+                  "email": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    }
+  }
+}

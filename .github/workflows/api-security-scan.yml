@@ -1,0 +1,52 @@
+name: API Security Scan
+
+# Runs the scanner against the target API on every pull request and
+# validates scanner behavior against an intentionally vulnerable local
+# target. The automated tests gate the build; this demo scan is evidence,
+# not a security gate for production code.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  api-security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run automated tests
+        run: python -m pytest -q
+
+      # In a real pipeline this would start the app under test (e.g. via
+      # docker compose) before scanning it. Replace with your target's
+      # actual startup step.
+      - name: Start target API
+        run: |
+          python3 sample_apis/mock_vulnerable_server.py &
+          sleep 2
+
+      - name: Run API security scan
+        run: |
+          python3 -m fuzzer.cli \
+            --spec sample_apis/demo_openapi.json \
+            --base-url http://localhost:8123 \
+            --token-a "token-a" --user-id-a "1" \
+            --token-b "token-b" --user-id-b "2" \
+            --out reports/ci_scan \
+            --fail-on never
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-security-report
+          path: reports/
