@@ -8,6 +8,7 @@ from fuzzer.http_client import ApiClient, TestAccount as Account, fill_path
 from fuzzer.cli import build_arg_parser
 from fuzzer.modules import bola, broken_auth, mass_assignment, prompt_injection, injection
 from fuzzer.modules import function_auth, system_prompt_leakage, excessive_agency
+from fuzzer.modules import resource_consumption, security_misconfiguration
 from fuzzer.parser import load_spec, parse_endpoints
 from fuzzer.report import generate_html_report, generate_json_report
 from fuzzer.scoring import Finding
@@ -140,3 +141,55 @@ def test_reflected_input_probe_is_a_review_signal_not_exploit_claim():
     assert findings[0].vuln_type == "INJECTION"
     assert findings[0].severity == "low"
     assert "does not prove" in findings[0].description
+
+
+def test_rate_probe_is_bounded_and_reports_only_an_inconclusive_signal():
+    endpoint = Endpoint("/health", "get", "health")
+
+    class Response:
+        status_code = 200
+        text = "ok"
+
+    class Client:
+        calls = 0
+
+        def call(self, *args, **kwargs):
+            self.calls += 1
+            return Response()
+
+    client = Client()
+    findings = resource_consumption.run([endpoint], client, Account("A", "t", "1"), 4)
+    assert client.calls == 4
+    assert len(findings) == 1
+    assert "not proof" in findings[0].description
+    try:
+        resource_consumption.run([endpoint], client, Account("A", "t", "1"), 11)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("rate probe should reject request counts over 10")
+    assert client.calls == 4
+
+
+def test_security_misconfiguration_checks_response_headers():
+    endpoint = Endpoint("/health", "get", "health")
+
+    class Response:
+        status_code = 200
+        text = "ok"
+        headers = {
+            "Server": "DemoServer/1.2",
+            "Access-Control-Allow-Origin": "*",
+        }
+
+    class Client:
+        def call(self, *args, **kwargs):
+            return Response()
+
+    findings = security_misconfiguration.run(
+        [endpoint], Client(), Account("A", "t", "1")
+    )
+    assert len(findings) == 1
+    assert findings[0].vuln_type == "SECURITY_MISCONFIGURATION"
+    assert "missing X-Content-Type-Options" in findings[0].description
+    assert "wildcard Access-Control-Allow-Origin" in findings[0].description

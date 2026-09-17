@@ -22,9 +22,11 @@ pentest.
 | `excessive_agency.py` | LLM06:2025 — Excessive Agency | Can an indirect prompt make the local demo agent use a destructive tool it does not need? This probe deletes demo order 2 and is skipped in read-only mode. |
 | `injection.py` | Heuristic input-safety probe | Does a harmless marker sent in a declared query parameter get reflected in a successful response? Reflection is a low-severity review signal, not proof of SQL injection or XSS. |
 | `system_prompt_leakage.py` | LLM07:2025 — System Prompt Leakage | Does the local rule-based demo agent reveal its internal system scope when asked? |
+| `security_misconfiguration.py` | API8:2023 — Security Misconfiguration | Checks sampled GET responses for missing `X-Content-Type-Options`, wildcard CORS, versioned `Server` headers, and obvious stack traces. |
+| `resource_consumption.py` | API4:2023 — Unrestricted Resource Consumption | Optional 3–10 request sample on one GET route; success is only an inconclusive signal. Enable with `--check-rate-limits`. |
 
 Coverage is intentionally partial. The API checks currently include API1,
-API2, API3, and API5; the LLM checks are demonstrations against the bundled
+API2, API3, API4 (opt-in), API5, and selected API8 response checks; the LLM checks are demonstrations against the bundled
 rule-based mock agent, not tests of a production generative model. See
 **Limitations** for checks that remain out of scope.
 
@@ -69,7 +71,7 @@ python3 -m fuzzer.cli \
 open reports/scan.html   # or just open the file in a browser
 ```
 
-Expected output against the included mock server: **11 findings** — BOLA
+Expected output against the included mock server: **14 findings** — BOLA
 on two endpoints, broken auth on one, broken function authorization on one,
 mass assignment on one, four prompt-injection cases, one system-prompt
 leakage finding, and one excessive-agency finding. The latter intentionally
@@ -79,6 +81,30 @@ the bundled mock API.
 The input-reflection probe reports no finding on this mock API. Run
 `python -m pytest -q` for the automated checks.
 Reports escape untrusted finding content before rendering it as HTML.
+
+The optional rate-limit sample is disabled by default. Only enable it on an
+authorized target where a small burst is acceptable; it sends at most ten
+requests to one GET endpoint. LLM10 is not claimed as implemented: this
+rule-based agent has no model inference, token billing, or cost controls to
+measure.
+
+## Explicitly out of scope
+
+- **LLM03 (Supply Chain):** this demo does not load third-party models,
+  plugins, or fine-tuned weights. Review dependency provenance separately.
+- **LLM04 (Data and Model Poisoning) and LLM08 (Vector/Embedding Weaknesses):**
+  there is no training pipeline, embedding model, or retrieval database here.
+- **LLM09 (Misinformation):** deterministic keyword rules cannot meaningfully
+  measure generative-model hallucination or factuality.
+- **LLM10 (Unbounded Consumption):** the mock agent has no inference/token
+  billing or model service to meter. The bounded API4 check is not an LLM10
+  test.
+- **API6, API9, and API10:** sensitive business-flow abuse, inventory/resource
+  management, and unsafe consumption of downstream APIs need application-
+  specific workflows and ground truth beyond this generic scanner.
+
+The reflected-input probe is an unclassified heuristic, not an API8 finding.
+API8 findings come from the separate response-configuration checks.
 
 ## Independent validation against OWASP crAPI
 
@@ -174,6 +200,8 @@ fuzzer/
     mass_assignment.py
     injection.py          harmless reflected-input heuristic
     system_prompt_leakage.py local mock-agent disclosure check
+    resource_consumption.py bounded API4 sample
+    security_misconfiguration.py API8 response checks
 tests/
   test_scanner.py          parser, report-safety, and offline end-to-end tests
 sample_apis/

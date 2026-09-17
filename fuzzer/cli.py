@@ -24,6 +24,7 @@ from fuzzer.parser import load_spec, parse_endpoints, summarize
 from fuzzer.http_client import ApiClient, TestAccount
 from fuzzer.modules import bola, mass_assignment, broken_auth, prompt_injection, injection
 from fuzzer.modules import function_auth, system_prompt_leakage, excessive_agency
+from fuzzer.modules import resource_consumption, security_misconfiguration
 from fuzzer.report import generate_json_report, generate_html_report
 from fuzzer.scoring import summarize_counts
 
@@ -51,8 +52,15 @@ def build_arg_parser():
         action="store_true",
         help="Opt in to LLM demo probes for the bundled mock API (includes a simulated destructive DELETE).",
     )
+    p.add_argument(
+        "--check-rate-limits",
+        action="store_true",
+        help="Opt in to a bounded 3-10 request API4 sample against one GET endpoint.",
+    )
+    p.add_argument("--rate-limit-sample", type=int, choices=range(3, 11), default=5,
+                   help="Request count for --check-rate-limits (3-10; default: 5)")
     p.add_argument("--skip", nargs="*", default=[],
-                    choices=["bola", "mass_assignment", "broken_auth", "prompt_injection", "injection", "function_auth", "system_prompt_leakage", "excessive_agency"],
+                    choices=["bola", "mass_assignment", "broken_auth", "prompt_injection", "injection", "function_auth", "system_prompt_leakage", "excessive_agency", "resource_consumption", "security_misconfiguration"],
                     help="Skip one or more modules")
     p.add_argument("--fail-on", default="critical",
                     choices=["critical", "high", "medium", "low", "never"],
@@ -142,6 +150,19 @@ def main(argv=None):
         print("[*] Running safe reflected-input probe (API8:2023 heuristic)...")
         findings = injection.run(endpoints, client, account_a)
         print(f"    -> {len(findings)} finding(s)")
+        all_findings += findings
+
+    print("[*] Running API8 response configuration checks...")
+    findings = security_misconfiguration.run(endpoints, client, account_a)
+    print(f"    -> {len(findings)} finding(s)")
+    all_findings += findings
+
+    if args.check_rate_limits and "resource_consumption" not in args.skip:
+        print(f"[*] Running bounded API4 sample ({args.rate_limit_sample} requests, one GET endpoint)...")
+        findings = resource_consumption.run(
+            endpoints, client, account_a, request_count=args.rate_limit_sample
+        )
+        print(f"    -> {len(findings)} tentative signal(s)")
         all_findings += findings
 
     json_path = generate_json_report(all_findings, args.base_url, f"{args.out}.json")

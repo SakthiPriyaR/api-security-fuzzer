@@ -24,7 +24,9 @@ OWASP_CATEGORIES = {
     "BROKEN_AUTH": ("API2:2023", "Broken Authentication"),
     "MASS_ASSIGNMENT": ("API3:2023", "Broken Object Property Level Authorization"),
     "BROKEN_FUNCTION_AUTH": ("API5:2023", "Broken Function Level Authorization"),
-    "INJECTION": ("API8:2023", "Security Misconfiguration"),
+    "INJECTION": ("N/A", "Input Reflection Heuristic"),
+    "SECURITY_MISCONFIGURATION": ("API8:2023", "Security Misconfiguration"),
+    "RESOURCE_CONSUMPTION": ("API4:2023", "Unrestricted Resource Consumption"),
     # From the separate OWASP Top 10 for LLM Applications list, since
     # this vulnerability class lives at the AI-agent layer rather than
     # the raw API layer that the three categories above cover.
@@ -98,6 +100,16 @@ REMEDIATION_TEXT = {
         "Validate and contextually encode all untrusted input before using it "
         "in database queries, templates, shell commands, or downstream systems. "
         "Prefer parameterized queries and avoid reflecting executable input."
+    ),
+    "SECURITY_MISCONFIGURATION": (
+        "Apply secure defaults, suppress unnecessary server/version headers and "
+        "stack traces, set appropriate browser security headers, and restrict "
+        "CORS to trusted origins. Review the specific response and deployment context."
+    ),
+    "RESOURCE_CONSUMPTION": (
+        "Set resource limits appropriate to the endpoint, including rate limits, "
+        "timeouts, payload and pagination bounds, and per-user quotas. Validate "
+        "limits under an authorized load-test plan; a small sample cannot confirm absence."
     ),
     "PROMPT_INJECTION": (
         "Never let an LLM agent treat third-party or user-generated content "
