@@ -149,24 +149,7 @@ sample_apis/
   api-security-scan.yml     CI/CD gating example
 ```
 
-## Limitations (be upfront about these in your report/viva)
 
-- **Coverage is 3 of the 10 OWASP API categories**, not all ten. Injection,
-  excessive data exposure, rate-limiting/resource consumption, SSRF, and
-  the remaining categories are explicitly out of scope for this build —
-  documented here as future work rather than silently omitted.
-- **BOLA detection relies on a heuristic**: it assumes a test account's
-  `user_id` doubles as a valid resource ID for that account's own data.
-  This holds for many REST APIs (crAPI included) but not all — a more
-  general version would need an account to first *create* a resource and
-  use the ID it gets back, rather than guessing.
-- **Mass assignment detection is reflection-based**: it only flags a field
-  as accepted if the API echoes it back in the response body. An API that
-  silently accepts a privileged field without reflecting it (e.g. an
-  async worker that applies it later) would be missed by this version.
-- **No fuzzing of query/header-based auth schemes** — the tool assumes
-  bearer-token auth, since that's the dominant pattern for modern REST
-  APIs, but doesn't yet handle API-key-in-header or OAuth flows generically.
 - This tool is intended for testing APIs **you own or have explicit
   permission to test**. Running it against third-party production systems
   without authorization would be unauthorized access testing, not a QA
