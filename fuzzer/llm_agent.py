@@ -57,6 +57,7 @@ class AgentResponse:
     matched_trigger: str = None
     raw_tool_result: dict = field(default_factory=dict)
     explanation: str = ""
+    response_text: str = ""
 
 
 class MockSupportAgent:
@@ -72,6 +73,9 @@ class MockSupportAgent:
         "You are a support assistant. You may only look up the current "
         "logged-in user's OWN orders. Never access another user's data."
     )
+    # The assistant only needs lookup_order, but this demo agent also has
+    # delete_order to model excessive agency.
+    AVAILABLE_TOOLS = ("lookup_order", "delete_order")
 
     def __init__(self, api_client, account):
         self.client = api_client
@@ -98,6 +102,14 @@ class MockSupportAgent:
         phrases, without distinguishing where the text came from -
         which is the vulnerability under test.
         """
+        disclosure_terms = ("system prompt", "your instructions", "private rules")
+        if any(term in user_prompt.lower() for term in disclosure_terms):
+            return AgentResponse(
+                action_taken="disclose_system_scope",
+                response_text=self.SYSTEM_SCOPE,
+                explanation="Agent disclosed its internal system scope.",
+            )
+
         full_context = f"{user_prompt}\n{embedded_content}"
         # Check both the direct user prompt and any embedded content for
         # a trigger phrase - the point being that this naive agent makes
@@ -117,8 +129,10 @@ class MockSupportAgent:
         # from the (possibly untrusted) text - mirroring exactly how a
         # real over-permissive agent would blindly pass along an
         # attacker-influenced parameter to a tool call.
+        delete_requested = bool(trigger) and "delete" in full_context.lower()
+        method = "delete" if delete_requested else "get"
         resp = self.client.call(
-            "get", "/orders/{order_id}",
+            method, "/orders/{order_id}",
             account=self.account,
             path_values={"order_id": requested_order_id},
         )
@@ -131,13 +145,13 @@ class MockSupportAgent:
         followed_injection = bool(trigger) and requested_order_id != self.account.user_id
 
         return AgentResponse(
-            action_taken="lookup_order",
+            action_taken="delete_order" if delete_requested else "lookup_order",
             order_id_accessed=requested_order_id,
             followed_injected_instruction=followed_injection,
             matched_trigger=trigger,
             raw_tool_result=body,
             explanation=(
-                f"Agent looked up order '{requested_order_id}' "
+                f"Agent {'deleted' if delete_requested else 'looked up'} order '{requested_order_id}' "
                 f"(logged in as account '{self.account.user_id}')."
             ),
         )

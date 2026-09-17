@@ -11,7 +11,7 @@ your demo/defense:
         --token-b "$TOKEN_B" --user-id-b "2" \\
         --out reports/scan
 
-It wires together: spec parsing -> the 3 attack modules -> scoring ->
+It wires together: spec parsing -> attack modules -> scoring ->
 JSON + HTML report generation, and exits non-zero if any critical
 finding was detected (this is the hook a CI/CD pipeline would use to
 fail a build).
@@ -23,6 +23,7 @@ import sys
 from fuzzer.parser import load_spec, parse_endpoints, summarize
 from fuzzer.http_client import ApiClient, TestAccount
 from fuzzer.modules import bola, mass_assignment, broken_auth, prompt_injection, injection
+from fuzzer.modules import function_auth, system_prompt_leakage, excessive_agency
 from fuzzer.report import generate_json_report, generate_html_report
 from fuzzer.scoring import summarize_counts
 
@@ -45,8 +46,13 @@ def build_arg_parser():
         help=("Only probe GET/HEAD/OPTIONS endpoints and disable the local-only "
               "prompt-injection simulation; use for an isolated validation target."),
     )
+    p.add_argument(
+        "--local-llm-demos",
+        action="store_true",
+        help="Opt in to LLM demo probes for the bundled mock API (includes a simulated destructive DELETE).",
+    )
     p.add_argument("--skip", nargs="*", default=[],
-                    choices=["bola", "mass_assignment", "broken_auth", "prompt_injection", "injection"],
+                    choices=["bola", "mass_assignment", "broken_auth", "prompt_injection", "injection", "function_auth", "system_prompt_leakage", "excessive_agency"],
                     help="Skip one or more modules")
     p.add_argument("--fail-on", default="critical",
                     choices=["critical", "high", "medium", "low", "never"],
@@ -64,11 +70,21 @@ def main(argv=None):
     print(f"[*] Loading spec: {args.spec}")
     spec = load_spec(args.spec)
     endpoints = parse_endpoints(spec)
+    local_demo_modules = ("prompt_injection", "system_prompt_leakage", "excessive_agency")
+    if not args.local_llm_demos:
+        for module_name in local_demo_modules:
+            if module_name not in args.skip:
+                args.skip.append(module_name)
+        print("[*] Skipping local-only LLM demos; pass --local-llm-demos only for the bundled mock API")
     if args.safe_read_only:
         endpoints = [ep for ep in endpoints if ep.method in ("get", "head", "options")]
         if "prompt_injection" not in args.skip:
             print("[*] Safe read-only mode: disabling local prompt-injection simulation")
             args.skip.append("prompt_injection")
+        if "system_prompt_leakage" not in args.skip:
+            args.skip.append("system_prompt_leakage")
+        if "excessive_agency" not in args.skip:
+            args.skip.append("excessive_agency")
         if "mass_assignment" not in args.skip:
             print("[*] Safe read-only mode: disabling request-body mutation probes")
             args.skip.append("mass_assignment")
@@ -92,6 +108,12 @@ def main(argv=None):
         print(f"    -> {len(findings)} finding(s)")
         all_findings += findings
 
+    if "function_auth" not in args.skip:
+        print("[*] Running Broken Function Level Authorization module (API5:2023)...")
+        findings = function_auth.run(endpoints, client, account_a)
+        print(f"    -> {len(findings)} finding(s)")
+        all_findings += findings
+
     if "mass_assignment" not in args.skip:
         print("[*] Running Mass Assignment module (API3:2023)...")
         findings = mass_assignment.run(endpoints, client, account_a)
@@ -101,6 +123,18 @@ def main(argv=None):
     if "prompt_injection" not in args.skip:
         print("[*] Running Prompt Injection module (LLM01:2025)...")
         findings = prompt_injection.run(client, account_a, account_b)
+        print(f"    -> {len(findings)} finding(s)")
+        all_findings += findings
+
+    if "system_prompt_leakage" not in args.skip:
+        print("[*] Running System Prompt Leakage check (LLM07:2025)...")
+        findings = system_prompt_leakage.run(client, account_a)
+        print(f"    -> {len(findings)} finding(s)")
+        all_findings += findings
+
+    if "excessive_agency" not in args.skip:
+        print("[*] Running local-only Excessive Agency demo (LLM06:2025)...")
+        findings = excessive_agency.run(client, account_a)
         print(f"    -> {len(findings)} finding(s)")
         all_findings += findings
 

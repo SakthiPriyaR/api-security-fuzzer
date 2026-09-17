@@ -41,6 +41,7 @@ jobs:
             --base-url http://localhost:8123 \
             --token-a "token-a" --user-id-a "1" \
             --token-b "token-b" --user-id-b "2" \
+            --local-llm-demos \
             --out reports/ci_scan \
             --fail-on never
 

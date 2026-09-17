@@ -1,11 +1,13 @@
 import json
 import threading
+from copy import deepcopy
 from http.server import HTTPServer
 from pathlib import Path
 
 from fuzzer.http_client import ApiClient, TestAccount as Account, fill_path
 from fuzzer.cli import build_arg_parser
 from fuzzer.modules import bola, broken_auth, mass_assignment, prompt_injection, injection
+from fuzzer.modules import function_auth, system_prompt_leakage, excessive_agency
 from fuzzer.parser import load_spec, parse_endpoints
 from fuzzer.report import generate_html_report, generate_json_report
 from fuzzer.scoring import Finding
@@ -18,6 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class LiveMockAPI:
     def __enter__(self):
+        from sample_apis import mock_vulnerable_server
+        mock_vulnerable_server.ORDERS.clear()
+        mock_vulnerable_server.ORDERS.update(deepcopy(mock_vulnerable_server.INITIAL_ORDERS))
         self.server = HTTPServer(("127.0.0.1", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -29,6 +34,9 @@ class LiveMockAPI:
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
+        from sample_apis import mock_vulnerable_server
+        mock_vulnerable_server.ORDERS.clear()
+        mock_vulnerable_server.ORDERS.update(deepcopy(mock_vulnerable_server.INITIAL_ORDERS))
 
 
 def test_path_substitution_and_openapi_security_override():
@@ -43,6 +51,7 @@ def test_path_substitution_and_openapi_security_override():
     endpoints = {endpoint.path: endpoint for endpoint in parse_endpoints(spec)}
     assert endpoints["/public"].requires_auth is False
     assert endpoints["/private"].requires_auth is True
+    assert endpoints.get("/admin/metrics") is None
 
 
 def test_read_only_validation_flag_is_available():
@@ -54,6 +63,7 @@ def test_read_only_validation_flag_is_available():
         "--safe-read-only",
     ])
     assert args.safe_read_only is True
+    assert args.local_llm_demos is False
 
 
 def test_demo_scan_detects_documented_vulnerabilities():
@@ -66,8 +76,11 @@ def test_demo_scan_detects_documented_vulnerabilities():
         findings = []
         findings.extend(bola.run(endpoints, api.client, account_a, account_b))
         findings.extend(broken_auth.run(endpoints, api.client))
+        findings.extend(function_auth.run(endpoints, api.client, account_a))
         findings.extend(mass_assignment.run(endpoints, api.client, account_a))
         findings.extend(prompt_injection.run(api.client, account_a, account_b))
+        findings.extend(system_prompt_leakage.run(api.client, account_a))
+        findings.extend(excessive_agency.run(api.client, account_a))
         findings.extend(injection.run(endpoints, api.client, account_a))
 
     counts = {}
@@ -76,8 +89,11 @@ def test_demo_scan_detects_documented_vulnerabilities():
     assert counts == {
         "BOLA": 2,
         "BROKEN_AUTH": 1,
+        "BROKEN_FUNCTION_AUTH": 1,
         "MASS_ASSIGNMENT": 1,
         "PROMPT_INJECTION": 4,
+        "SYSTEM_PROMPT_LEAKAGE": 1,
+        "EXCESSIVE_AGENCY": 1,
     }
 
 

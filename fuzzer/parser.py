@@ -45,6 +45,7 @@ class Endpoint:
     requires_auth: bool = False
     request_body_schema: Optional[dict] = None
     response_schema: Optional[dict] = None
+    required_role: Optional[str] = None
 
     @property
     def id_parameters(self):
@@ -143,6 +144,7 @@ def parse_endpoints(spec: dict) -> list:
                     requires_auth=_operation_requires_auth(operation, global_security),
                     request_body_schema=_extract_body_schema(operation),
                     response_schema=_extract_response_schema(operation),
+                    required_role=operation.get("x-required-role"),
                 )
             )
 

@@ -1,8 +1,9 @@
 # API Security Testing & Fuzzing Framework
 
 An automated scanner that discovers REST API endpoints from an OpenAPI/Swagger
-spec and tests them against three of the most common and highest-impact
-vulnerability classes in the **OWASP API Security Top 10 (2023)**.
+spec and checks selected authorization and input-handling risks from the
+**OWASP API Security Top 10 (2023)**, plus isolated demonstrations for selected
+OWASP LLM Top 10 risks.
 
 Built as a capstone project sitting at the intersection of **QA automation**
 and **application security** — the tool is designed to slot into a CI/CD
@@ -17,12 +18,15 @@ pentest.
 | `bola.py` | API1:2023 — Broken Object Level Authorization | Can Account A read/modify a resource that belongs to Account B, using only Account A's own token? |
 | `broken_auth.py` | API2:2023 — Broken Authentication | Do endpoints marked as requiring auth actually reject requests with no token / a malformed token? |
 | `mass_assignment.py` | API3:2023 — Broken Object Property Level Authorization | Does the API accept and apply client-supplied fields (`isAdmin`, `role`, etc.) that aren't part of its own declared schema? |
+| `function_auth.py` | API5:2023 — Broken Function Level Authorization | Can an authenticated low-privilege account call an OpenAPI operation marked with `x-required-role`? |
+| `excessive_agency.py` | LLM06:2025 — Excessive Agency | Can an indirect prompt make the local demo agent use a destructive tool it does not need? This probe deletes demo order 2 and is skipped in read-only mode. |
 | `injection.py` | Heuristic input-safety probe | Does a harmless marker sent in a declared query parameter get reflected in a successful response? Reflection is a low-severity review signal, not proof of SQL injection or XSS. |
+| `system_prompt_leakage.py` | LLM07:2025 — System Prompt Leakage | Does the local rule-based demo agent reveal its internal system scope when asked? |
 
-These three were chosen deliberately over attempting full Top-10 coverage:
-they are the most-documented, most demoable, and have mature intentionally-
-vulnerable reference APIs to validate against. Broader coverage (injection,
-rate-limiting, SSRF, etc.) is noted as future work — see **Limitations** below.
+Coverage is intentionally partial. The API checks currently include API1,
+API2, API3, and API5; the LLM checks are demonstrations against the bundled
+rule-based mock agent, not tests of a production generative model. See
+**Limitations** for checks that remain out of scope.
 
 ## How it works
 
@@ -58,16 +62,22 @@ python3 -m fuzzer.cli \
   --base-url http://localhost:8123 \
   --token-a token-a --user-id-a 1 \
   --token-b token-b --user-id-b 2 \
+  --local-llm-demos \
   --out reports/scan
 
 # 3. Open the report
 open reports/scan.html   # or just open the file in a browser
 ```
 
-Expected output against the included mock server: **8 findings** — BOLA
-on two endpoints, broken auth on one, mass assignment on one, and four
-prompt-injection cases. The injection probe reports no finding on this mock
-API. Run `python -m pytest -q` for the automated unit and end-to-end checks.
+Expected output against the included mock server: **11 findings** — BOLA
+on two endpoints, broken auth on one, broken function authorization on one,
+mass assignment on one, four prompt-injection cases, one system-prompt
+leakage finding, and one excessive-agency finding. The latter intentionally
+deletes demo order 2; restart the mock server to reset its in-memory data.
+The LLM demos are disabled by default; use `--local-llm-demos` only against
+the bundled mock API.
+The input-reflection probe reports no finding on this mock API. Run
+`python -m pytest -q` for the automated checks.
 Reports escape untrusted finding content before rendering it as HTML.
 
 ## Independent validation against OWASP crAPI
@@ -158,9 +168,12 @@ fuzzer/
   cli.py                    orchestration + CI/CD exit-code gating
   modules/
     bola.py
+    function_auth.py       API5 check for routes marked x-required-role
+    excessive_agency.py    local-only LLM06 destructive-action demonstration
     broken_auth.py
     mass_assignment.py
     injection.py          harmless reflected-input heuristic
+    system_prompt_leakage.py local mock-agent disclosure check
 tests/
   test_scanner.py          parser, report-safety, and offline end-to-end tests
 sample_apis/

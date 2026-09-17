@@ -3,6 +3,13 @@
   "info": {"title": "Demo Vulnerable API", "version": "1.0.0"},
   "security": [{"bearerAuth": []}],
   "paths": {
+    "/admin/metrics": {
+      "get": {
+        "operationId": "getAdminMetrics",
+        "x-required-role": "admin",
+        "responses": {"200": {"description": "Admin metrics", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    },
     "/orders/{order_id}": {
       "get": {
         "operationId": "getOrder",

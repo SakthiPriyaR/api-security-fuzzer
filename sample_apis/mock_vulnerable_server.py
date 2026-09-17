@@ -8,13 +8,16 @@ Vulnerabilities intentionally present:
   - GET /orders/{order_id}: no ownership check -> BOLA
   - GET /profile: works with NO auth at all -> Broken Auth
   - PUT /users/{user_id}/update: accepts an unlisted "isAdmin" field -> Mass Assignment
+  - GET /admin/metrics: authenticated regular users can call admin function -> BFLA
 """
 
 import json
+from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 ORDERS = {"1": {"order_id": "1", "owner": "1", "item": "Widget"},
           "2": {"order_id": "2", "owner": "2", "item": "Gadget"}}
+INITIAL_ORDERS = deepcopy(ORDERS)
 
 VALID_TOKENS = {"token-a": "1", "token-b": "2"}
 
@@ -32,6 +35,15 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(body).encode())
 
     def do_GET(self):
+        if self.path == "/admin/metrics":
+            user = self._auth_user()
+            if not user:
+                self._send(401, {"error": "unauthorized"})
+                return
+            # VULNERABLE: valid authentication, but no function-role check.
+            self._send(200, {"active_users": 2, "revenue": 1000})
+            return
+
         if self.path.startswith("/orders/"):
             order_id = self.path.split("/orders/")[1]
             user = self._auth_user()
@@ -66,6 +78,22 @@ class Handler(BaseHTTPRequestHandler):
             for k, v in body.items():
                 response[k] = v
             self._send(200, response)
+            return
+        self._send(404, {"error": "not found"})
+
+    def do_DELETE(self):
+        if self.path.startswith("/orders/"):
+            user = self._auth_user()
+            if not user:
+                self._send(401, {"error": "unauthorized"})
+                return
+            order_id = self.path.split("/orders/", 1)[1]
+            order = ORDERS.pop(order_id, None)
+            if not order:
+                self._send(404, {"error": "not found"})
+                return
+            # Intentionally vulnerable demo behavior: any valid user may delete any order.
+            self._send(200, {"deleted": order})
             return
         self._send(404, {"error": "not found"})
 

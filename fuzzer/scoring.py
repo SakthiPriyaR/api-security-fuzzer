@@ -23,11 +23,14 @@ OWASP_CATEGORIES = {
     "BOLA": ("API1:2023", "Broken Object Level Authorization"),
     "BROKEN_AUTH": ("API2:2023", "Broken Authentication"),
     "MASS_ASSIGNMENT": ("API3:2023", "Broken Object Property Level Authorization"),
+    "BROKEN_FUNCTION_AUTH": ("API5:2023", "Broken Function Level Authorization"),
     "INJECTION": ("API8:2023", "Security Misconfiguration"),
     # From the separate OWASP Top 10 for LLM Applications list, since
     # this vulnerability class lives at the AI-agent layer rather than
     # the raw API layer that the three categories above cover.
     "PROMPT_INJECTION": ("LLM01:2025", "Prompt Injection"),
+    "SYSTEM_PROMPT_LEAKAGE": ("LLM07:2025", "System Prompt Leakage"),
+    "EXCESSIVE_AGENCY": ("LLM06:2025", "Excessive Agency"),
 }
 
 SEVERITY_ORDER = {"critical": 3, "high": 2, "medium": 1, "low": 0}
@@ -74,6 +77,11 @@ REMEDIATION_TEXT = {
         "owns or is permitted to access the specific object_id/user_id in "
         "the request, server-side, on every call - never trust the client."
     ),
+    "BROKEN_FUNCTION_AUTH": (
+        "Enforce role- and policy-based authorization server-side for every "
+        "privileged function. Deny by default and verify access using a genuinely "
+        "low-privilege account; hiding routes in the client is not authorization."
+    ),
     "BROKEN_AUTH": (
         "Reject requests to protected endpoints when no token, an expired "
         "token, or a malformed token is presented. Ensure authentication "
@@ -99,6 +107,17 @@ REMEDIATION_TEXT = {
         "server-side authorization checks to agent-initiated API calls as "
         "you would to any direct API call - never trust the agent's own "
         "judgment as the sole access control."
+    ),
+    "SYSTEM_PROMPT_LEAKAGE": (
+        "Do not expose confidential system instructions, credentials, or "
+        "internal policy text in user-visible responses. Keep secrets out of "
+        "prompts and enforce access controls independently of prompt wording."
+    ),
+    "EXCESSIVE_AGENCY": (
+        "Give agents only the tools and permissions required for their task. "
+        "Use least-privilege service identities, require user confirmation for "
+        "destructive actions, and enforce authorization in the API rather than "
+        "relying on the model to choose safe tools."
     ),
 }
 
