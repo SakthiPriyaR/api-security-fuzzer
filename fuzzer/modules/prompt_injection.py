@@ -69,14 +69,16 @@ def _account_owns_id(account, order_id) -> bool:
     return str(order_id) == str(account.user_id)
 
 
-def run(client, account, victim_account):
+def run(client, account, victim_account, agent=None):
     """
     client: ApiClient
     account: TestAccount - the agent is acting as this (attacker-controlled) user
     victim_account: TestAccount - a DIFFERENT account whose data should stay off-limits
+    agent: Optional agent instance (MockSupportAgent or RealSupportAgent)
     """
     findings = []
-    agent = MockSupportAgent(client, account)
+    if agent is None:
+        agent = MockSupportAgent(client, account)
 
     all_cases = [
         (label, prompt, content, "indirect")

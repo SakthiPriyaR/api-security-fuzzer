@@ -58,17 +58,28 @@ pip install -r requirements.txt
 #    ships a tiny deliberately-vulnerable mock server:
 python3 sample_apis/mock_vulnerable_server.py &
 
-# 2. Run the scanner against it
+# 2. Run the scanner against it (JSON, HTML, SARIF, JUnit)
 python3 -m fuzzer.cli \
   --spec sample_apis/demo_openapi.json \
   --base-url http://localhost:8123 \
   --token-a token-a --user-id-a 1 \
   --token-b token-b --user-id-b 2 \
   --local-llm-demos \
+  --out reports/scan \
+  --sarif reports/scan.sarif \
+  --junit reports/scan.xml
+
+# 3. Connect to a Real LLM (Ollama, OpenAI, Gemini)
+python3 -m fuzzer.cli \
+  --spec sample_apis/demo_openapi.json \
+  --base-url http://localhost:8123 \
+  --token-a token-a --user-id-a 1 \
+  --token-b token-b --user-id-b 2 \
+  --llm-provider ollama --llm-model llama3.2 \
   --out reports/scan
 
-# 3. Open the report
-open reports/scan.html   # or just open the file in a browser
+# 4. Open the interactive dashboard
+open reports/scan.html   # or just open the file in any modern browser
 ```
 
 Expected output against the included mock server: **14 findings** — BOLA

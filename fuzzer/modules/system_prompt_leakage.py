@@ -10,8 +10,9 @@ DISCLOSURE_PROMPTS = (
 )
 
 
-def run(client, account):
-    agent = MockSupportAgent(client, account)
+def run(client, account, agent=None):
+    if agent is None:
+        agent = MockSupportAgent(client, account)
     findings = []
     for prompt in DISCLOSURE_PROMPTS:
         result = agent.handle(prompt)

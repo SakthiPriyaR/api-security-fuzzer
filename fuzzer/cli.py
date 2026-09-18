@@ -1,39 +1,48 @@
-"""
+﻿"""
 cli.py
 
 Command-line entry point. This is the single command you run live in
-your demo/defense:
+your demo/defense or CI/CD pipelines:
 
-    python -m fuzzer.cli \\
-        --spec sample_apis/crapi_openapi.json \\
-        --base-url http://localhost:8888 \\
-        --token-a "$TOKEN_A" --user-id-a "1" \\
-        --token-b "$TOKEN_B" --user-id-b "2" \\
-        --out reports/scan
+    python -m fuzzer.cli \
+        --spec sample_apis/demo_openapi.json \
+        --base-url http://localhost:8123 \
+        --token-a "token-a" --user-id-a "1" \
+        --token-b "token-b" --user-id-b "2" \
+        --out reports/scan \
+        --sarif reports/scan.sarif \
+        --junit reports/scan.xml
 
-It wires together: spec parsing -> attack modules -> scoring ->
-JSON + HTML report generation, and exits non-zero if any critical
-finding was detected (this is the hook a CI/CD pipeline would use to
-fail a build).
+Wires together: spec parsing -> attack modules -> scoring ->
+JSON, HTML, SARIF, and JUnit report generation, and exits non-zero if any critical
+or selected severity finding was detected.
 """
 
 import argparse
 import json
+import os
 import sys
 
 from fuzzer.parser import load_spec, parse_endpoints, summarize
 from fuzzer.http_client import ApiClient, TestAccount
+from fuzzer.llm_provider import LLMClient
+from fuzzer.llm_agent import MockSupportAgent, RealSupportAgent
 from fuzzer.modules import bola, mass_assignment, broken_auth, prompt_injection, injection
 from fuzzer.modules import function_auth, system_prompt_leakage, excessive_agency
 from fuzzer.modules import resource_consumption, security_misconfiguration
-from fuzzer.report import generate_json_report, generate_html_report
+from fuzzer.report import (
+    generate_json_report,
+    generate_html_report,
+    generate_sarif_report,
+    generate_junit_report,
+)
 from fuzzer.scoring import summarize_counts
 
 
 def build_arg_parser():
     p = argparse.ArgumentParser(
         description="API Security Testing & Fuzzing Framework - "
-                     "OWASP API Top 10 automated scanner."
+                     "OWASP API Top 10 and LLM Top 10 automated scanner."
     )
     p.add_argument("--spec", required=True, help="Path to OpenAPI/Swagger spec (JSON or YAML)")
     p.add_argument("--base-url", required=True, help="Base URL of the running target API")
@@ -48,6 +57,8 @@ def build_arg_parser():
               "resource IDs owned by account B, e.g. '{\"vehicleId\":\"GUID\"}'."),
     )
     p.add_argument("--out", default="reports/scan", help="Output path prefix (no extension)")
+    p.add_argument("--sarif", default=None, help="Optional output path for SARIF v2.1.0 report (e.g. reports/scan.sarif)")
+    p.add_argument("--junit", default=None, help="Optional output path for JUnit XML report (e.g. reports/scan.xml)")
     p.add_argument(
         "--safe-read-only",
         action="store_true",
@@ -59,6 +70,15 @@ def build_arg_parser():
         action="store_true",
         help="Opt in to LLM demo probes for the bundled mock API (includes a simulated destructive DELETE).",
     )
+    p.add_argument(
+        "--llm-provider",
+        default="mock",
+        choices=["mock", "openai-compatible", "ollama", "gemini"],
+        help="LLM provider for evaluating LLM agent security ('mock', 'openai-compatible', 'ollama', 'gemini')."
+    )
+    p.add_argument("--llm-model", default=None, help="Model name for real LLM testing (e.g. gpt-4o-mini, llama3.2, gemini-1.5-flash)")
+    p.add_argument("--llm-endpoint", default=None, help="Custom endpoint URL for OpenAI-compatible or Ollama LLM provider")
+    p.add_argument("--llm-api-key", default=None, help="API key for LLM provider (or reads OPENAI_API_KEY / GEMINI_API_KEY)")
     p.add_argument(
         "--check-rate-limits",
         action="store_true",
@@ -96,16 +116,21 @@ def main(argv=None):
     print(f"[*] Loading spec: {args.spec}")
     spec = load_spec(args.spec)
     endpoints = parse_endpoints(spec)
+
+    is_real_llm = args.llm_provider != "mock"
     local_demo_modules = ("prompt_injection", "system_prompt_leakage", "excessive_agency")
-    if not args.local_llm_demos:
+
+    # If neither local mock demo nor real LLM was specified, skip LLM checks
+    if not args.local_llm_demos and not is_real_llm:
         for module_name in local_demo_modules:
             if module_name not in args.skip:
                 args.skip.append(module_name)
-        print("[*] Skipping local-only LLM demos; pass --local-llm-demos only for the bundled mock API")
+        print("[*] Skipping LLM checks; pass --local-llm-demos for mock or specify --llm-provider for real LLM testing")
+
     if args.safe_read_only:
         endpoints = [ep for ep in endpoints if ep.method in ("get", "head", "options")]
         if "prompt_injection" not in args.skip:
-            print("[*] Safe read-only mode: disabling local prompt-injection simulation")
+            print("[*] Safe read-only mode: disabling prompt-injection simulation")
             args.skip.append("prompt_injection")
         if "system_prompt_leakage" not in args.skip:
             args.skip.append("system_prompt_leakage")
@@ -114,6 +139,7 @@ def main(argv=None):
         if "mass_assignment" not in args.skip:
             print("[*] Safe read-only mode: disabling request-body mutation probes")
             args.skip.append("mass_assignment")
+
     print(summarize(endpoints))
 
     client = ApiClient(base_url=args.base_url)
@@ -122,6 +148,19 @@ def main(argv=None):
         label="B", token=args.token_b, user_id=args.user_id_b,
         resource_ids=resource_ids_b,
     )
+
+    # Initialize agent (Mock or Real LLM)
+    if is_real_llm:
+        print(f"[*] Initializing real LLM agent using provider '{args.llm_provider}'...")
+        llm_client = LLMClient(
+            provider=args.llm_provider,
+            model=args.llm_model,
+            endpoint=args.llm_endpoint,
+            api_key=args.llm_api_key,
+        )
+        agent_a = RealSupportAgent(client, account_a, llm_client)
+    else:
+        agent_a = MockSupportAgent(client, account_a)
 
     all_findings = []
 
@@ -151,19 +190,19 @@ def main(argv=None):
 
     if "prompt_injection" not in args.skip:
         print("[*] Running Prompt Injection module (LLM01:2025)...")
-        findings = prompt_injection.run(client, account_a, account_b)
+        findings = prompt_injection.run(client, account_a, account_b, agent=agent_a)
         print(f"    -> {len(findings)} finding(s)")
         all_findings += findings
 
     if "system_prompt_leakage" not in args.skip:
         print("[*] Running System Prompt Leakage check (LLM07:2025)...")
-        findings = system_prompt_leakage.run(client, account_a)
+        findings = system_prompt_leakage.run(client, account_a, agent=agent_a)
         print(f"    -> {len(findings)} finding(s)")
         all_findings += findings
 
     if "excessive_agency" not in args.skip:
-        print("[*] Running local-only Excessive Agency demo (LLM06:2025)...")
-        findings = excessive_agency.run(client, account_a)
+        print("[*] Running Excessive Agency probe (LLM06:2025)...")
+        findings = excessive_agency.run(client, account_a, agent=agent_a)
         print(f"    -> {len(findings)} finding(s)")
         all_findings += findings
 
@@ -186,8 +225,26 @@ def main(argv=None):
         print(f"    -> {len(findings)} tentative signal(s)")
         all_findings += findings
 
+    out_dir = os.path.dirname(args.out)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
     json_path = generate_json_report(all_findings, args.base_url, f"{args.out}.json")
     html_path = generate_html_report(all_findings, args.base_url, f"{args.out}.html")
+
+    sarif_path = None
+    if args.sarif:
+        sarif_dir = os.path.dirname(args.sarif)
+        if sarif_dir:
+            os.makedirs(sarif_dir, exist_ok=True)
+        sarif_path = generate_sarif_report(all_findings, args.base_url, args.sarif)
+
+    junit_path = None
+    if args.junit:
+        junit_dir = os.path.dirname(args.junit)
+        if junit_dir:
+            os.makedirs(junit_dir, exist_ok=True)
+        junit_path = generate_junit_report(all_findings, args.base_url, args.junit)
 
     counts = summarize_counts(all_findings)
     print(f"\n[*] Scan complete. {len(all_findings)} total finding(s).")
@@ -195,6 +252,10 @@ def main(argv=None):
           f"Medium: {counts['medium']}  Low: {counts['low']}")
     print(f"[*] JSON report: {json_path}")
     print(f"[*] HTML report: {html_path}")
+    if sarif_path:
+        print(f"[*] SARIF report: {sarif_path}")
+    if junit_path:
+        print(f"[*] JUnit report: {junit_path}")
 
     if args.fail_on != "never":
         threshold = SEVERITY_RANK[args.fail_on]

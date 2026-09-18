@@ -228,3 +228,52 @@ def test_security_misconfiguration_checks_response_headers():
     assert findings[0].vuln_type == "SECURITY_MISCONFIGURATION"
     assert "missing X-Content-Type-Options" in findings[0].description
     assert "wildcard Access-Control-Allow-Origin" in findings[0].description
+
+def test_sarif_and_junit_generation(tmp_path):
+    from fuzzer.report import generate_sarif_report, generate_junit_report
+    finding = Finding(
+        vuln_type="BOLA",
+        severity="critical",
+        endpoint="GET /orders/{id}",
+        description="BOLA flaw detected",
+        evidence={"order_id": 2, "token": "token-a"},
+        remediation="Verify object ownership."
+    )
+    sarif_file = tmp_path / "report.sarif"
+    junit_file = tmp_path / "report.xml"
+
+    generate_sarif_report([finding], "http://localhost:8123", str(sarif_file))
+    generate_junit_report([finding], "http://localhost:8123", str(junit_file))
+
+    assert sarif_file.exists()
+    sarif_data = json.loads(sarif_file.read_text(encoding="utf-8"))
+    assert sarif_data["version"] == "2.1.0"
+    assert len(sarif_data["runs"][0]["results"]) == 1
+    assert sarif_data["runs"][0]["results"][0]["ruleId"] == "BOLA"
+
+    assert junit_file.exists()
+    junit_xml = junit_file.read_text(encoding="utf-8")
+    assert "<failure" in junit_xml
+    assert "BOLA flaw detected" in junit_xml
+
+
+def test_curl_reproducer_builder():
+    from fuzzer.report import build_curl_reproducer
+    finding = Finding(
+        vuln_type="BOLA",
+        severity="critical",
+        endpoint="GET /orders/{order_id}",
+        description="BOLA flaw",
+        evidence={"order_id": "99", "token": "test-token-123"}
+    )
+    curl = build_curl_reproducer(finding, "http://api.example.com")
+    assert "curl -i -X GET" in curl
+    assert "http://api.example.com/orders/99" in curl
+    assert "Authorization: Bearer test-token-123" in curl
+
+
+def test_real_llm_client_mock_provider():
+    from fuzzer.llm_provider import LLMClient
+    client = LLMClient(provider="mock")
+    res = client.chat_with_tools("system", [{"role": "user", "content": "hi"}])
+    assert res == {"content": "", "tool_calls": []}
